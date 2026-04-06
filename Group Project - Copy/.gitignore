@@ -1,0 +1,11 @@
+target/
+data/
+*.mv.db
+*.jar
+*.class
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+*.log

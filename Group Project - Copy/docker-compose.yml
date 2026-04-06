@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+
+  player-service:
+    build: ./player-service
+    container_name: player-service
+    ports:
+      - "8081:8081"
+    volumes:
+      - player-data:/app/data
+
+  party-service:
+    build: ./party-service
+    container_name: party-service
+    ports:
+      - "8082:8082"
+    volumes:
+      - party-data:/app/data
+
+  battle-service:
+    build: ./battle-service
+    container_name: battle-service
+    ports:
+      - "8083:8083"
+    volumes:
+      - battle-data:/app/data
+
+  pve-service:
+    build: ./pve-service
+    container_name: pve-service
+    ports:
+      - "8084:8084"
+    environment:
+      - PVE_BATTLE-SERVICE_URL=http://battle-service:8083
+      - PVE_PARTY-SERVICE_URL=http://party-service:8082
+      - PVE_PLAYER-SERVICE_URL=http://player-service:8081
+    volumes:
+      - pve-data:/app/data
+    depends_on:
+      - player-service
+      - party-service
+      - battle-service
+
+  pvp-service:
+    build: ./pvp-service
+    container_name: pvp-service
+    ports:
+      - "8085:8085"
+    environment:
+      - PVP_BATTLE-SERVICE_URL=http://battle-service:8083
+      - PVP_PLAYER-SERVICE_URL=http://player-service:8081
+      - PVP_PARTY-SERVICE_URL=http://party-service:8082
+    volumes:
+      - pvp-data:/app/data
+    depends_on:
+      - player-service
+      - party-service
+      - battle-service
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - GATEWAY_PLAYER-SERVICE_URL=http://player-service:8081
+      - GATEWAY_PARTY-SERVICE_URL=http://party-service:8082
+      - GATEWAY_BATTLE-SERVICE_URL=http://battle-service:8083
+      - GATEWAY_PVE-SERVICE_URL=http://pve-service:8084
+      - GATEWAY_PVP-SERVICE_URL=http://pvp-service:8085
+    depends_on:
+      - player-service
+      - party-service
+      - battle-service
+      - pve-service
+      - pvp-service
+
+volumes:
+  player-data:
+  party-data:
+  battle-data:
+  pve-data:
+  pvp-data:

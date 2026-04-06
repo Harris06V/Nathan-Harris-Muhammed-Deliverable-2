@@ -1,0 +1,188 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-player-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: player-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  test-party-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: party-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  test-battle-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: battle-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  test-pve-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pve-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  test-pvp-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pvp-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  test-api-gateway:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests
+        run: mvn test
+      - name: Build package
+        run: mvn package -DskipTests
+
+  build-game-client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game-client
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build client JAR
+        run: mvn package -DskipTests
+
+  build-and-push-docker-images:
+    needs: [test-player-service, test-party-service, test-battle-service, test-pve-service, test-pvp-service, test-api-gateway, build-game-client]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Build and push Player Service
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/player-service:latest ./player-service
+          docker push ghcr.io/${{ github.repository }}/player-service:latest
+      - name: Build and push Party Service
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/party-service:latest ./party-service
+          docker push ghcr.io/${{ github.repository }}/party-service:latest
+      - name: Build and push Battle Service
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/battle-service:latest ./battle-service
+          docker push ghcr.io/${{ github.repository }}/battle-service:latest
+      - name: Build and push PvE Service
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/pve-service:latest ./pve-service
+          docker push ghcr.io/${{ github.repository }}/pve-service:latest
+      - name: Build and push PvP Service
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/pvp-service:latest ./pvp-service
+          docker push ghcr.io/${{ github.repository }}/pvp-service:latest
+      - name: Build and push API Gateway
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/api-gateway:latest ./api-gateway
+          docker push ghcr.io/${{ github.repository }}/api-gateway:latest
+
+  integration-test:
+    needs: [test-player-service, test-party-service, test-battle-service, test-pve-service, test-pvp-service, test-api-gateway]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start all services
+        run: docker-compose up -d --build
+      - name: Wait for services to start
+        run: sleep 30
+      - name: Test gateway health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health)
+          if [ "$STATUS" != "200" ]; then echo "Gateway health check failed"; exit 1; fi
+      - name: Test registration flow
+        run: |
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d '{"username":"citest","password":"pass123"}' \
+            http://localhost:8080/api/players/register
+      - name: Test login flow
+        run: |
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d '{"username":"citest","password":"pass123"}' \
+            http://localhost:8080/api/players/login
+      - name: Tear down
+        if: always()
+        run: docker-compose down
